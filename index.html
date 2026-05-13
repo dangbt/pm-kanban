@@ -51,6 +51,17 @@
     <div class="text-[11px] text-zinc-500">Xong: <span id="stat-done" class="text-emerald-400 font-semibold">0</span></div>
   </div>
 
+  <!-- Content modal -->
+  <div id="modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onclick="closeModal(event)">
+    <div class="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+        <span id="modal-title" class="text-sm font-semibold text-white"></span>
+        <button onclick="document.getElementById('modal').classList.add('hidden')" class="text-zinc-500 hover:text-white text-lg leading-none">✕</button>
+      </div>
+      <pre id="modal-content" class="p-5 text-sm text-zinc-300 whitespace-pre-wrap overflow-y-auto leading-relaxed font-sans"></pre>
+    </div>
+  </div>
+
   <!-- Kanban board -->
   <main class="p-6 grid grid-cols-3 gap-4" style="height: calc(100vh - 120px)">
 
@@ -117,7 +128,7 @@
       const accentColor = isCompleted ? 'emerald' : isWriting ? 'amber' : 'blue';
 
       return `
-        <div class="card bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 cursor-default">
+        <div class="card bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 ${ticket.content ? 'cursor-pointer' : 'cursor-default'}" ${ticket.content ? `onclick="openModal('${ticket.ticket_id}')"` : ''}>
           <!-- Top row -->
           <div class="flex items-start justify-between gap-2">
             <span class="text-[10px] font-mono text-zinc-600">${ticket.ticket_id || '—'}</span>
@@ -161,10 +172,10 @@
             🔗 ${p.affiliate_link}
           </a>` : ''}
 
-          <!-- Output location -->
-          ${isCompleted && ticket.output_location ? `
-          <div class="text-[10px] text-emerald-600 truncate" title="${ticket.output_location}">
-            📄 ${ticket.output_location.split('/').slice(-1)[0]}
+          <!-- Content hint -->
+          ${isCompleted && ticket.content ? `
+          <div class="text-[10px] text-emerald-600 flex items-center gap-1">
+            📄 <span class="underline underline-offset-2">Xem bài viết</span>
           </div>` : ''}
 
           <!-- Footer -->
@@ -183,6 +194,7 @@
       try {
         const res = await fetch('/api/tickets');
         const tickets = await res.json();
+        ticketMap = Object.fromEntries(tickets.map(t => [t.ticket_id, t]));
 
         const open = tickets.filter(t => t.status === 'open' && !t.assigned_to);
         const writing = tickets.filter(t => t.status === 'open' && t.assigned_to);
@@ -215,6 +227,21 @@
       } catch (e) {
         console.error(e);
       }
+    }
+
+    let ticketMap = {};
+
+    function openModal(id) {
+      const t = ticketMap[id];
+      if (!t || !t.content) return;
+      document.getElementById('modal-title').textContent = t.product?.name || t.title;
+      document.getElementById('modal-content').textContent = t.content;
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function closeModal(e) {
+      if (e.target === document.getElementById('modal'))
+        document.getElementById('modal').classList.add('hidden');
     }
 
     fetchTickets();

@@ -22,10 +22,12 @@ async function initDb() {
       created_at      TIMESTAMPTZ,
       completed_at    TIMESTAMPTZ,
       output_location TEXT,
+      content         TEXT,
       product         JSONB,
       updated_at      TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS content TEXT`);
 }
 
 function authOk(req) {
@@ -77,8 +79,8 @@ const server = http.createServer(async (req, res) => {
       const t = await readBody(req);
       await pool.query(`
         INSERT INTO tickets
-          (ticket_id, title, status, priority, assigned_to, created_at, completed_at, output_location, product)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          (ticket_id, title, status, priority, assigned_to, created_at, completed_at, output_location, content, product)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT (ticket_id) DO UPDATE SET
           title           = EXCLUDED.title,
           status          = EXCLUDED.status,
@@ -86,12 +88,13 @@ const server = http.createServer(async (req, res) => {
           assigned_to     = EXCLUDED.assigned_to,
           completed_at    = EXCLUDED.completed_at,
           output_location = EXCLUDED.output_location,
+          content         = EXCLUDED.content,
           product         = EXCLUDED.product,
           updated_at      = NOW()
       `, [
         t.ticket_id, t.title, t.status, t.priority,
         t.assigned_to, t.created_at, t.completed_at,
-        t.output_location, JSON.stringify(t.product || {}),
+        t.output_location, t.content || null, JSON.stringify(t.product || {}),
       ]);
       json(res, 201, { ok: true });
     } catch (e) {
@@ -112,9 +115,10 @@ const server = http.createServer(async (req, res) => {
           status          = COALESCE($2, status),
           completed_at    = COALESCE($3, completed_at),
           output_location = COALESCE($4, output_location),
+          content         = COALESCE($5, content),
           updated_at      = NOW()
         WHERE ticket_id = $1
-      `, [id, u.status, u.completed_at, u.output_location]);
+      `, [id, u.status, u.completed_at, u.output_location, u.content || null]);
       json(res, 200, { ok: true });
     } catch (e) {
       json(res, 400, { error: e.message });
