@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: pm-kanban
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: API_KEY
+        sync: false

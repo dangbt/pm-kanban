@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PM Kanban — Shopee Affiliate</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    * { font-family: 'Inter', sans-serif; }
+    .card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .col-scroll { overflow-y: auto; max-height: calc(100vh - 180px); }
+    .col-scroll::-webkit-scrollbar { width: 4px; }
+    .col-scroll::-webkit-scrollbar-track { background: transparent; }
+    .col-scroll::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
+    .pulse-dot { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .tag { display: inline-flex; align-items: center; font-size: 10px; font-weight: 600;
+           letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px;
+           border-radius: 999px; }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+
+  <!-- Header -->
+  <header class="border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-sm font-bold text-white">PM</div>
+      <div>
+        <h1 class="text-sm font-semibold text-white">Shopee Affiliate Kanban</h1>
+        <p class="text-[11px] text-zinc-500">Product Manager Board</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1.5 text-[11px] text-zinc-400">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot"></span>
+        <span id="last-refresh">Đang tải...</span>
+      </div>
+      <button onclick="fetchTickets()" class="text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors">
+        ↻ Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- Stats bar -->
+  <div class="px-6 py-3 border-b border-zinc-800 flex items-center gap-6">
+    <div class="text-[11px] text-zinc-500">Tổng: <span id="stat-total" class="text-white font-semibold">0</span> ticket</div>
+    <div class="text-[11px] text-zinc-500">Chờ: <span id="stat-open" class="text-blue-400 font-semibold">0</span></div>
+    <div class="text-[11px] text-zinc-500">Đang viết: <span id="stat-writing" class="text-amber-400 font-semibold">0</span></div>
+    <div class="text-[11px] text-zinc-500">Xong: <span id="stat-done" class="text-emerald-400 font-semibold">0</span></div>
+  </div>
+
+  <!-- Kanban board -->
+  <main class="p-6 grid grid-cols-3 gap-4" style="height: calc(100vh - 120px)">
+
+    <!-- Column: Chờ xử lý -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between px-1">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-blue-500"></div>
+          <span class="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Chờ xử lý</span>
+        </div>
+        <span id="count-open" class="tag bg-blue-500/15 text-blue-400">0</span>
+      </div>
+      <div id="col-open" class="col-scroll flex flex-col gap-3 pr-1"></div>
+    </div>
+
+    <!-- Column: Đang viết -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between px-1">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-amber-500 pulse-dot"></div>
+          <span class="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Đang viết</span>
+        </div>
+        <span id="count-writing" class="tag bg-amber-500/15 text-amber-400">0</span>
+      </div>
+      <div id="col-writing" class="col-scroll flex flex-col gap-3 pr-1"></div>
+    </div>
+
+    <!-- Column: Hoàn thành -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between px-1">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+          <span class="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Hoàn thành</span>
+        </div>
+        <span id="count-done" class="tag bg-emerald-500/15 text-emerald-400">0</span>
+      </div>
+      <div id="col-done" class="col-scroll flex flex-col gap-3 pr-1"></div>
+    </div>
+
+  </main>
+
+  <script>
+    function formatPrice(n) {
+      if (!n || n === 0) return null;
+      return Number(n).toLocaleString('vi-VN') + 'đ';
+    }
+
+    function formatDate(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
+        + ' ' + d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function buildCard(ticket) {
+      const p = ticket.product || {};
+      const salePrice = formatPrice(p.sale_price);
+      const origPrice = formatPrice(p.original_price);
+      const discount = p.discount_pct ? `-${p.discount_pct}%` : null;
+      const features = Array.isArray(p.key_features) ? p.key_features : [];
+      const isCompleted = ticket.status === 'completed';
+      const isWriting = ticket.status === 'open' && ticket.assigned_to;
+
+      const accentColor = isCompleted ? 'emerald' : isWriting ? 'amber' : 'blue';
+
+      return `
+        <div class="card bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 cursor-default">
+          <!-- Top row -->
+          <div class="flex items-start justify-between gap-2">
+            <span class="text-[10px] font-mono text-zinc-600">${ticket.ticket_id || '—'}</span>
+            ${isCompleted
+              ? `<span class="tag bg-emerald-500/15 text-emerald-400">✓ Done</span>`
+              : isWriting
+              ? `<span class="tag bg-amber-500/15 text-amber-400">✍ Writing</span>`
+              : `<span class="tag bg-blue-500/15 text-blue-400">Pending</span>`
+            }
+          </div>
+
+          <!-- Product name -->
+          <p class="text-sm font-semibold text-white leading-snug">${p.name || ticket.title || 'Không có tên'}</p>
+
+          <!-- Price row -->
+          ${salePrice ? `
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-sm font-bold text-${accentColor}-400">${salePrice}</span>
+            ${origPrice ? `<span class="text-xs text-zinc-500 line-through">${origPrice}</span>` : ''}
+            ${discount ? `<span class="tag bg-red-500/15 text-red-400">${discount}</span>` : ''}
+          </div>` : ''}
+
+          <!-- Category -->
+          ${p.category ? `<span class="tag bg-zinc-800 text-zinc-400 w-fit">${p.category}</span>` : ''}
+
+          <!-- Features -->
+          ${features.length > 0 ? `
+          <ul class="flex flex-col gap-1">
+            ${features.slice(0, 3).map(f => `
+              <li class="flex items-start gap-1.5 text-[11px] text-zinc-400">
+                <span class="text-${accentColor}-500 mt-0.5">•</span>${f}
+              </li>`).join('')}
+            ${features.length > 3 ? `<li class="text-[10px] text-zinc-600">+${features.length - 3} điểm khác</li>` : ''}
+          </ul>` : ''}
+
+          <!-- Link -->
+          ${p.affiliate_link ? `
+          <a href="${p.affiliate_link}" target="_blank"
+             class="text-[10px] text-zinc-600 hover:text-zinc-400 truncate transition-colors"
+             title="${p.affiliate_link}">
+            🔗 ${p.affiliate_link}
+          </a>` : ''}
+
+          <!-- Output location -->
+          ${isCompleted && ticket.output_location ? `
+          <div class="text-[10px] text-emerald-600 truncate" title="${ticket.output_location}">
+            📄 ${ticket.output_location.split('/').slice(-1)[0]}
+          </div>` : ''}
+
+          <!-- Footer -->
+          <div class="flex items-center justify-between pt-1 border-t border-zinc-800">
+            <span class="text-[10px] text-zinc-600">${formatDate(ticket.created_at)}</span>
+            ${ticket.completed_at
+              ? `<span class="text-[10px] text-emerald-700">${formatDate(ticket.completed_at)}</span>`
+              : ''
+            }
+          </div>
+        </div>
+      `;
+    }
+
+    async function fetchTickets() {
+      try {
+        const res = await fetch('/api/tickets');
+        const tickets = await res.json();
+
+        const open = tickets.filter(t => t.status === 'open' && !t.assigned_to);
+        const writing = tickets.filter(t => t.status === 'open' && t.assigned_to);
+        const done = tickets.filter(t => t.status === 'completed');
+
+        document.getElementById('col-open').innerHTML = open.length
+          ? open.map(buildCard).join('')
+          : `<div class="text-center text-zinc-700 text-xs py-8">Không có ticket</div>`;
+
+        document.getElementById('col-writing').innerHTML = writing.length
+          ? writing.map(buildCard).join('')
+          : `<div class="text-center text-zinc-700 text-xs py-8">Không có ticket</div>`;
+
+        document.getElementById('col-done').innerHTML = done.length
+          ? done.map(buildCard).join('')
+          : `<div class="text-center text-zinc-700 text-xs py-8">Không có ticket</div>`;
+
+        document.getElementById('count-open').textContent = open.length;
+        document.getElementById('count-writing').textContent = writing.length;
+        document.getElementById('count-done').textContent = done.length;
+        document.getElementById('stat-total').textContent = tickets.length;
+        document.getElementById('stat-open').textContent = open.length;
+        document.getElementById('stat-writing').textContent = writing.length;
+        document.getElementById('stat-done').textContent = done.length;
+
+        const now = new Date();
+        document.getElementById('last-refresh').textContent =
+          'Cập nhật ' + now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    fetchTickets();
+    setInterval(fetchTickets, 5000);
+  </script>
+</body>
+</html>
