@@ -72,31 +72,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/tickets — upsert
+  // POST /api/tickets — insert only, skip if ticket_id already exists
   if (url.pathname === '/api/tickets' && req.method === 'POST') {
     if (!authOk(req)) { json(res, 401, { error: 'Unauthorized' }); return; }
     try {
       const t = await readBody(req);
-      await pool.query(`
+      const result = await pool.query(`
         INSERT INTO tickets
           (ticket_id, title, status, priority, assigned_to, created_at, completed_at, output_location, content, product)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-        ON CONFLICT (ticket_id) DO UPDATE SET
-          title           = EXCLUDED.title,
-          status          = EXCLUDED.status,
-          priority        = EXCLUDED.priority,
-          assigned_to     = EXCLUDED.assigned_to,
-          completed_at    = EXCLUDED.completed_at,
-          output_location = EXCLUDED.output_location,
-          content         = EXCLUDED.content,
-          product         = EXCLUDED.product,
-          updated_at      = NOW()
+        ON CONFLICT (ticket_id) DO NOTHING
       `, [
         t.ticket_id, t.title, t.status, t.priority,
         t.assigned_to, t.created_at, t.completed_at,
         t.output_location, t.content || null, JSON.stringify(t.product || {}),
       ]);
-      json(res, 201, { ok: true });
+      const inserted = result.rowCount > 0;
+      json(res, inserted ? 201 : 200, { ok: true, inserted });
     } catch (e) {
       json(res, 400, { error: e.message });
     }
