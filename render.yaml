@@ -3,7 +3,7 @@ services:
     name: pm-kanban
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: apt-get install -y fonts-noto-core fonts-noto-extra 2>/dev/null; npm install
     startCommand: node server.js
     envVars:
       - key: DATABASE_URL

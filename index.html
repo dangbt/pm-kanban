@@ -64,10 +64,20 @@
         <button onclick="document.getElementById('modal').classList.add('hidden')" class="text-zinc-500 hover:text-white text-xl leading-none ml-3 shrink-0">✕</button>
       </div>
 
-      <!-- Post preview -->
-      <div class="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+      <!-- Tabs -->
+      <div class="flex border-b border-zinc-800 shrink-0">
+        <button id="tab-post" onclick="switchTab('post')"
+          class="px-5 py-3 text-[11px] font-semibold text-white border-b-2 border-orange-500 transition-colors">
+          Bài viết
+        </button>
+        <button id="tab-image" onclick="switchTab('image')"
+          class="px-5 py-3 text-[11px] font-semibold text-zinc-500 hover:text-white border-b-2 border-transparent transition-colors">
+          Hình ảnh
+        </button>
+      </div>
 
-        <!-- Facebook-style post box -->
+      <!-- Tab: Post content -->
+      <div id="pane-post" class="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
         <div class="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
           <div class="flex items-center gap-2 mb-3">
             <div class="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-xs font-bold text-white shrink-0">FB</div>
@@ -78,22 +88,54 @@
           </div>
           <pre id="modal-content" class="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed font-sans"></pre>
         </div>
-
-        <!-- Affiliate link -->
         <div id="modal-link-row" class="hidden flex items-center gap-2 bg-zinc-800/50 rounded-lg px-3 py-2 border border-zinc-700">
           <span class="text-[10px] text-zinc-500 shrink-0">🔗 Affiliate link:</span>
           <a id="modal-link" href="#" target="_blank" class="text-[11px] text-emerald-400 hover:text-emerald-300 truncate transition-colors"></a>
         </div>
+      </div>
 
+      <!-- Tab: Image -->
+      <div id="pane-image" class="hidden flex-1 overflow-y-auto p-5 flex flex-col gap-4 items-center">
+        <!-- Image preview -->
+        <div id="img-preview-wrap" class="w-full rounded-xl overflow-hidden border border-zinc-700 bg-zinc-800 flex items-center justify-center min-h-[240px]">
+          <img id="img-preview" class="hidden w-full" alt="Promotional card"/>
+          <div id="img-placeholder" class="flex flex-col items-center gap-3 py-12 text-zinc-600">
+            <svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <p class="text-xs">Chưa có ảnh — nhấn "Tạo ảnh" để generate</p>
+          </div>
+          <div id="img-loading" class="hidden flex-col items-center gap-3 py-12 text-zinc-500">
+            <svg class="w-8 h-8 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+            <p class="text-xs">Đang tạo ảnh...</p>
+          </div>
+        </div>
+        <!-- Image URL input -->
+        <div class="w-full flex flex-col gap-2">
+          <label class="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Product Image URL (optional)</label>
+          <input id="img-url-input" type="text" placeholder="https://cf.shopee.vn/file/..."
+            class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"/>
+        </div>
       </div>
 
       <!-- Modal footer -->
       <div class="px-5 py-3 border-t border-zinc-800 flex items-center justify-between gap-3 shrink-0">
         <span id="modal-copy-feedback" class="text-[11px] text-emerald-400 opacity-0 transition-opacity">✓ Đã copy!</span>
-        <div class="flex items-center gap-2 ml-auto">
+        <div id="footer-post" class="flex items-center gap-2 ml-auto">
           <button onclick="copyContent()"
             class="flex items-center gap-1.5 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg transition-colors">
             📋 Copy bài viết
+          </button>
+          <button onclick="document.getElementById('modal').classList.add('hidden')"
+            class="text-[11px] text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-lg transition-colors">
+            Đóng
+          </button>
+        </div>
+        <div id="footer-image" class="hidden flex items-center gap-2 ml-auto">
+          <button onclick="generateImage()"
+            class="flex items-center gap-1.5 text-[11px] font-semibold bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-lg transition-colors">
+            🎨 Tạo ảnh
+          </button>
+          <button id="btn-download" onclick="downloadImage()" class="hidden text-[11px] font-semibold bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2 rounded-lg transition-colors">
+            ⬇ Download
           </button>
           <button onclick="document.getElementById('modal').classList.add('hidden')"
             class="text-[11px] text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-lg transition-colors">
@@ -274,26 +316,103 @@
 
     let ticketMap = {};
 
+    let currentTicketId = null;
+
+    function switchTab(tab) {
+      const isPost = tab === 'post';
+      document.getElementById('pane-post').classList.toggle('hidden', !isPost);
+      document.getElementById('pane-image').classList.toggle('hidden', isPost);
+      document.getElementById('footer-post').classList.toggle('hidden', !isPost);
+      document.getElementById('footer-image').classList.toggle('hidden', isPost);
+      document.getElementById('tab-post').className = `px-5 py-3 text-[11px] font-semibold border-b-2 transition-colors ${isPost ? 'text-white border-orange-500' : 'text-zinc-500 hover:text-white border-transparent'}`;
+      document.getElementById('tab-image').className = `px-5 py-3 text-[11px] font-semibold border-b-2 transition-colors ${!isPost ? 'text-white border-orange-500' : 'text-zinc-500 hover:text-white border-transparent'}`;
+    }
+
     function openModal(id) {
       const t = ticketMap[id];
       if (!t || !t.content) return;
+      currentTicketId = id;
+
       document.getElementById('modal-ticket-id').textContent = t.ticket_id || '';
       document.getElementById('modal-title').textContent = t.product?.name || t.title || '';
       document.getElementById('modal-content').textContent = t.content;
 
       const link = t.product?.affiliate_link;
       const linkRow = document.getElementById('modal-link-row');
-      const linkEl = document.getElementById('modal-link');
       if (link) {
-        linkEl.textContent = link;
-        linkEl.href = link;
+        document.getElementById('modal-link').textContent = link;
+        document.getElementById('modal-link').href = link;
         linkRow.classList.remove('hidden');
       } else {
         linkRow.classList.add('hidden');
       }
 
+      // Reset image tab
+      document.getElementById('img-url-input').value = t.product?.image_url || '';
+      loadImagePreview(id);
+
       document.getElementById('modal-copy-feedback').style.opacity = '0';
+      switchTab('post');
       document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function loadImagePreview(id) {
+      const preview = document.getElementById('img-preview');
+      const placeholder = document.getElementById('img-placeholder');
+      const loading = document.getElementById('img-loading');
+      const btnDownload = document.getElementById('btn-download');
+
+      // Try loading from server
+      const imgUrl = `/api/tickets/${encodeURIComponent(id)}/image?t=${Date.now()}`;
+      const testImg = new Image();
+      testImg.onload = () => {
+        preview.src = imgUrl;
+        preview.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        loading.classList.add('hidden');
+        btnDownload.classList.remove('hidden');
+      };
+      testImg.onerror = () => {
+        preview.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+        loading.classList.add('hidden');
+        btnDownload.classList.add('hidden');
+      };
+      testImg.src = imgUrl;
+    }
+
+    async function generateImage() {
+      if (!currentTicketId) return;
+      const preview = document.getElementById('img-preview');
+      const placeholder = document.getElementById('img-placeholder');
+      const loading = document.getElementById('img-loading');
+
+      placeholder.classList.add('hidden');
+      preview.classList.add('hidden');
+      loading.classList.remove('hidden');
+      loading.style.display = 'flex';
+
+      const imageUrl = document.getElementById('img-url-input').value.trim();
+
+      try {
+        await fetch(`/api/tickets/${encodeURIComponent(currentTicketId)}/generate-image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'dangbadao' },
+          body: JSON.stringify(imageUrl ? { image_url: imageUrl } : {})
+        });
+        loadImagePreview(currentTicketId);
+      } catch(e) {
+        loading.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+      }
+    }
+
+    function downloadImage() {
+      if (!currentTicketId) return;
+      const a = document.createElement('a');
+      a.href = `/api/tickets/${encodeURIComponent(currentTicketId)}/image`;
+      a.download = `${currentTicketId}-card.png`;
+      a.click();
     }
 
     function closeModal(e) {
