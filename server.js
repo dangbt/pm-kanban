@@ -202,11 +202,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/tickets — insert only, skip if ticket_id already exists
+  // POST /api/tickets — auto-generate ticket_id if not provided
   if (url.pathname === '/api/tickets' && req.method === 'POST') {
     if (!authOk(req)) { json(res, 401, { error: 'Unauthorized' }); return; }
     try {
       const t = await readBody(req);
+      // Auto-assign next PM-NNN id if not provided
+      if (!t.ticket_id) {
+        const { rows: existing } = await pool.query(`SELECT ticket_id FROM tickets WHERE ticket_id ~ '^PM-[0-9]+$'`);
+        const nums = existing.map(r => parseInt(r.ticket_id.replace('PM-', ''), 10)).filter(n => !isNaN(n));
+        t.ticket_id = `PM-${(nums.length > 0 ? Math.max(...nums) : 0) + 1}`;
+      }
       const result = await pool.query(`
         INSERT INTO tickets
           (ticket_id, title, status, priority, assigned_to, created_at, completed_at, output_location, content, product)
@@ -218,7 +224,7 @@ const server = http.createServer(async (req, res) => {
         t.output_location, t.content || null, JSON.stringify(t.product || {}),
       ]);
       const inserted = result.rowCount > 0;
-      json(res, inserted ? 201 : 200, { ok: true, inserted });
+      json(res, inserted ? 201 : 200, { ok: true, inserted, ticket_id: t.ticket_id });
     } catch (e) {
       json(res, 400, { error: e.message });
     }
