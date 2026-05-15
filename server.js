@@ -49,96 +49,6 @@ async function initDb() {
   `);
 }
 
-// ── Shopee crawler ────────────────────────────────────────────────
-
-async function crawlShopee(affiliateLink) {
-  let browser;
-  try {
-    const { chromium } = require('playwright');
-    const { existsSync } = require('fs');
-    const systemChromium = [
-      '/usr/bin/chromium-browser',
-      '/usr/bin/chromium',
-      '/usr/bin/google-chrome-stable',
-      '/usr/bin/google-chrome',
-    ].find(p => existsSync(p));
-
-    browser = await chromium.launch({
-      headless: true,
-      executablePath: systemChromium || undefined,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process'],
-    });
-    const ctx = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/20G75 Safari/604.1',
-      locale: 'vi-VN',
-      extraHTTPHeaders: { 'Accept-Language': 'vi-VN,vi;q=0.9' },
-    });
-    const page = await ctx.newPage();
-
-    // Follow redirect to get final URL
-    const resp = await page.goto(affiliateLink, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    const finalUrl = page.url();
-
-    // Extract shopid + itemid from URL patterns:
-    // /product/{shopid}/{itemid} or /{slug}-i.{shopid}.{itemid}
-    let shopid, itemid;
-    const m1 = finalUrl.match(/shopee\.vn\/product\/(\d+)\/(\d+)/);
-    const m2 = finalUrl.match(/-i\.(\d+)\.(\d+)/);
-    if (m1) { shopid = m1[1]; itemid = m1[2]; }
-    else if (m2) { shopid = m2[1]; itemid = m2[2]; }
-
-    // Try Shopee internal API with cookies from page visit
-    let apiData = null;
-    if (shopid && itemid) {
-      try {
-        const apiResp = await page.evaluate(async ({ sid, iid }) => {
-          const r = await fetch(`/api/v4/item/get?itemid=${iid}&shopid=${sid}`, {
-            headers: { 'x-api-source': 'pc', 'af-ac-enc-dat': 'null' },
-          });
-          return r.json();
-        }, { sid: shopid, iid: itemid });
-        if (apiResp?.data) apiData = apiResp.data;
-      } catch {}
-    }
-
-    let name, salePrice, origPrice, discountPct, imageUrl, keyFeatures, category, shopInfo;
-
-    if (apiData) {
-      name = apiData.name;
-      salePrice = Math.round((apiData.price_min || apiData.price || 0) / 100000);
-      origPrice = Math.round((apiData.price_before_discount || apiData.raw_discount || 0) / 100000) || salePrice;
-      discountPct = apiData.discount ? parseInt(apiData.discount) : (origPrice > salePrice ? Math.round((1 - salePrice / origPrice) * 100) : 0);
-      imageUrl = apiData.image ? `https://cf.shopee.vn/file/${apiData.image}` : null;
-      keyFeatures = (apiData.description || '').split('\n').filter(l => l.trim().length > 10).slice(0, 6);
-      category = apiData.categories?.map(c => c.display_name).join(' / ') || '';
-      shopInfo = { name: apiData.shop_name, rating: apiData.item_rating?.rating_star };
-    } else {
-      // Fallback: wait for DOM render and extract
-      await page.waitForTimeout(5000);
-      const extracted = await page.evaluate(() => {
-        const metaTitle = document.querySelector('meta[property="og:title"]')?.content || document.title || '';
-        const metaImg = document.querySelector('meta[property="og:image"]')?.content || '';
-        const priceEls = [...document.querySelectorAll('[class*="pqTWkA"],[class*="price"],[class*="Price"]')]
-          .map(el => el.textContent.replace(/[^\d]/g, '')).filter(p => p.length >= 4 && p.length <= 9);
-        return { title: metaTitle, img: metaImg, prices: priceEls };
-      });
-      name = extracted.title.replace(/\s*[-|].*shopee.*/i, '').trim() || 'Sản phẩm Shopee';
-      imageUrl = extracted.img || null;
-      const prices = extracted.prices.map(Number).filter(p => p > 1000).sort((a, b) => a - b);
-      salePrice = prices[0] || 0;
-      origPrice = prices[prices.length - 1] || salePrice;
-      discountPct = origPrice > salePrice ? Math.round((1 - salePrice / origPrice) * 100) : 0;
-      keyFeatures = [];
-      category = '';
-      shopInfo = {};
-    }
-
-    return { shopid, itemid, name, sale_price: salePrice, original_price: origPrice, discount_pct: discountPct, image_url: imageUrl, key_features: keyFeatures, category, shop_info: shopInfo };
-  } finally {
-    if (browser) await browser.close().catch(() => {});
-  }
-}
-
 // ── Image generation ──────────────────────────────────────────────
 
 function escXml(s) {
@@ -359,15 +269,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/crawl — crawl Shopee product and save to DB
-  if (url.pathname === '/api/crawl' && req.method === 'POST') {
+  // POST /api/products/import — save pre-crawled product data from local script
+  if (url.pathname === '/api/products/import' && req.method === 'POST') {
     if (!authOk(req)) { json(res, 401, { error: 'Unauthorized' }); return; }
     try {
-      const { link } = await readBody(req);
-      if (!link) { json(res, 400, { error: 'link required' }); return; }
-
-      const data = await crawlShopee(link);
-
+      const d = await readBody(req);
+      if (!d.affiliate_link) { json(res, 400, { error: 'affiliate_link required' }); return; }
       const { rows } = await pool.query(`
         INSERT INTO products (affiliate_link, shopid, itemid, name, sale_price, original_price, discount_pct, category, image_url, key_features, shop_info)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
@@ -376,8 +283,7 @@ const server = http.createServer(async (req, res) => {
           discount_pct = EXCLUDED.discount_pct, category = EXCLUDED.category, image_url = EXCLUDED.image_url,
           key_features = EXCLUDED.key_features, shop_info = EXCLUDED.shop_info, crawled_at = NOW()
         RETURNING *
-      `, [link, data.shopid, data.itemid, data.name, data.sale_price, data.original_price, data.discount_pct, data.category, data.image_url, JSON.stringify(data.key_features || []), JSON.stringify(data.shop_info || {})]);
-
+      `, [d.affiliate_link, d.shopid, d.itemid, d.name, d.sale_price||0, d.original_price||0, d.discount_pct||0, d.category||'', d.image_url||null, JSON.stringify(d.key_features||[]), JSON.stringify(d.shop_info||{})]);
       json(res, 200, { ok: true, product: rows[0] });
     } catch (e) { json(res, 500, { error: e.message }); }
     return;

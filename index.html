@@ -205,20 +205,15 @@
   <!-- Products view -->
   <section id="view-products" class="hidden flex flex-col" style="height: calc(100vh - 120px)">
 
-    <!-- Crawl bar -->
-    <div class="px-6 py-4 border-b border-zinc-800">
-      <div class="flex items-center gap-3 max-w-2xl">
-        <input id="crawl-input" type="text" placeholder="Paste link Shopee affiliate (https://s.shopee.vn/...)"
-          class="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-emerald-600 transition-colors"
-          onkeydown="if(event.key==='Enter') doCrawl()"/>
-        <button id="btn-crawl" onclick="doCrawl()"
-          class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors shrink-0 disabled:opacity-50">
-          <svg id="crawl-icon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          <svg id="crawl-spinner" class="hidden w-4 h-4 spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-          Crawl
-        </button>
+    <!-- Usage hint -->
+    <div class="px-6 py-3 border-b border-zinc-800 flex items-center gap-4">
+      <div class="flex items-center gap-2 text-[11px] text-zinc-500">
+        <span class="text-zinc-600">Thêm sản phẩm:</span>
+        <code class="bg-zinc-900 border border-zinc-800 text-emerald-400 px-2.5 py-1 rounded-lg font-mono">node crawl-local.js "https://s.shopee.vn/..."</code>
       </div>
-      <div id="crawl-msg" class="mt-2 text-xs hidden"></div>
+      <button onclick="fetchProducts()" class="ml-auto text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+        ↻ Refresh
+      </button>
     </div>
 
     <!-- Product grid -->
@@ -445,51 +440,6 @@
           'Cập nhật ' + now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       } catch (e) {
         console.error(e);
-      }
-    }
-
-    async function doCrawl() {
-      const input = document.getElementById('crawl-input');
-      const link = input.value.trim();
-      if (!link) return;
-
-      const btn = document.getElementById('btn-crawl');
-      const icon = document.getElementById('crawl-icon');
-      const spinner = document.getElementById('crawl-spinner');
-      const msg = document.getElementById('crawl-msg');
-
-      btn.disabled = true;
-      icon.classList.add('hidden');
-      spinner.classList.remove('hidden');
-      msg.className = 'mt-2 text-xs text-zinc-500';
-      msg.textContent = 'Đang crawl sản phẩm... (có thể mất 30-60 giây)';
-      msg.classList.remove('hidden');
-
-      try {
-        const res = await fetch('/api/crawl', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
-          body: JSON.stringify({ link })
-        });
-        const data = await res.json();
-
-        if (res.ok && data.ok) {
-          msg.className = 'mt-2 text-xs text-emerald-400';
-          msg.textContent = `✓ Đã crawl: ${data.product?.name || 'Sản phẩm'} — ${formatPrice(data.product?.sale_price) || 'N/A'}`;
-          input.value = '';
-          await fetchProducts();
-        } else {
-          msg.className = 'mt-2 text-xs text-red-400';
-          msg.textContent = `✗ Lỗi: ${data.error || 'Không crawl được sản phẩm'}`;
-        }
-      } catch (e) {
-        msg.className = 'mt-2 text-xs text-red-400';
-        msg.textContent = `✗ Lỗi kết nối: ${e.message}`;
-      } finally {
-        btn.disabled = false;
-        icon.classList.remove('hidden');
-        spinner.classList.add('hidden');
-        setTimeout(() => { msg.classList.add('hidden'); }, 8000);
       }
     }
 
