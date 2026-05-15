@@ -3,7 +3,7 @@ services:
     name: pm-kanban
     runtime: node
     plan: free
-    buildCommand: apt-get install -y fonts-noto-core fonts-noto-extra 2>/dev/null; npm install
+    buildCommand: apt-get install -y fonts-noto-core fonts-noto-extra 2>/dev/null; npm install; npx playwright install chromium --with-deps 2>/dev/null || true
     startCommand: node server.js
     envVars:
       - key: DATABASE_URL

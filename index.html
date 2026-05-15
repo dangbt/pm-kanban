@@ -19,6 +19,9 @@
     .tag { display: inline-flex; align-items: center; font-size: 10px; font-weight: 600;
            letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px;
            border-radius: 999px; }
+    .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen">
@@ -32,19 +35,32 @@
         <p class="text-[11px] text-zinc-500">Product Manager Board</p>
       </div>
     </div>
+
+    <!-- Tab nav -->
+    <div class="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-xl p-1">
+      <button id="nav-tickets" onclick="switchView('tickets')"
+        class="px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors bg-zinc-700 text-white">
+        Tickets
+      </button>
+      <button id="nav-products" onclick="switchView('products')"
+        class="px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors text-zinc-400 hover:text-white">
+        Sản phẩm
+      </button>
+    </div>
+
     <div class="flex items-center gap-3">
       <div class="flex items-center gap-1.5 text-[11px] text-zinc-400">
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot"></span>
         <span id="last-refresh">Đang tải...</span>
       </div>
-      <button onclick="fetchTickets()" class="text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors">
+      <button onclick="onRefresh()" class="text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors">
         ↻ Refresh
       </button>
     </div>
   </header>
 
-  <!-- Stats bar -->
-  <div class="px-6 py-3 border-b border-zinc-800 flex items-center gap-6">
+  <!-- Stats bar (tickets only) -->
+  <div id="stats-bar" class="px-6 py-3 border-b border-zinc-800 flex items-center gap-6">
     <div class="text-[11px] text-zinc-500">Tổng: <span id="stat-total" class="text-white font-semibold">0</span> ticket</div>
     <div class="text-[11px] text-zinc-500">Chờ: <span id="stat-open" class="text-blue-400 font-semibold">0</span></div>
     <div class="text-[11px] text-zinc-500">Đang viết: <span id="stat-writing" class="text-amber-400 font-semibold">0</span></div>
@@ -96,7 +112,6 @@
 
       <!-- Tab: Image -->
       <div id="pane-image" class="hidden flex-1 overflow-y-auto p-5 flex flex-col gap-4 items-center">
-        <!-- Image preview -->
         <div id="img-preview-wrap" class="w-full rounded-xl overflow-hidden border border-zinc-700 bg-zinc-800 flex items-center justify-center min-h-[240px]">
           <img id="img-preview" class="hidden w-full" alt="Promotional card"/>
           <div id="img-placeholder" class="flex flex-col items-center gap-3 py-12 text-zinc-600">
@@ -108,7 +123,6 @@
             <p class="text-xs">Đang tạo ảnh...</p>
           </div>
         </div>
-        <!-- Image URL input -->
         <div class="w-full flex flex-col gap-2">
           <label class="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Product Image URL (optional)</label>
           <input id="img-url-input" type="text" placeholder="https://cf.shopee.vn/file/..."
@@ -147,8 +161,8 @@
     </div>
   </div>
 
-  <!-- Kanban board -->
-  <main class="p-6 grid grid-cols-3 gap-4" style="height: calc(100vh - 120px)">
+  <!-- Tickets view: Kanban board -->
+  <main id="view-tickets" class="p-6 grid grid-cols-3 gap-4" style="height: calc(100vh - 120px)">
 
     <!-- Column: Chờ xử lý -->
     <div class="flex flex-col gap-3">
@@ -188,7 +202,37 @@
 
   </main>
 
+  <!-- Products view -->
+  <section id="view-products" class="hidden flex flex-col" style="height: calc(100vh - 120px)">
+
+    <!-- Crawl bar -->
+    <div class="px-6 py-4 border-b border-zinc-800">
+      <div class="flex items-center gap-3 max-w-2xl">
+        <input id="crawl-input" type="text" placeholder="Paste link Shopee affiliate (https://s.shopee.vn/...)"
+          class="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-emerald-600 transition-colors"
+          onkeydown="if(event.key==='Enter') doCrawl()"/>
+        <button id="btn-crawl" onclick="doCrawl()"
+          class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors shrink-0 disabled:opacity-50">
+          <svg id="crawl-icon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          <svg id="crawl-spinner" class="hidden w-4 h-4 spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+          Crawl
+        </button>
+      </div>
+      <div id="crawl-msg" class="mt-2 text-xs hidden"></div>
+    </div>
+
+    <!-- Product grid -->
+    <div class="flex-1 overflow-y-auto p-6">
+      <div id="product-count" class="text-[11px] text-zinc-500 mb-4 hidden"></div>
+      <div id="product-grid" class="product-grid">
+        <div class="col-span-full text-center text-zinc-700 text-sm py-16">Chưa có sản phẩm — paste link Shopee và nhấn Crawl</div>
+      </div>
+    </div>
+
+  </section>
+
   <script>
+    /* ─── Utilities ─── */
     function formatPrice(n) {
       if (!n || n === 0) return null;
       return Number(n).toLocaleString('vi-VN') + 'đ';
@@ -201,6 +245,33 @@
         + ' ' + d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     }
 
+    const API_KEY = 'dangbadao';
+
+    /* ─── View switcher ─── */
+    let currentView = 'tickets';
+
+    function switchView(view) {
+      currentView = view;
+      const isTickets = view === 'tickets';
+
+      document.getElementById('view-tickets').classList.toggle('hidden', !isTickets);
+      document.getElementById('view-products').classList.toggle('hidden', isTickets);
+      document.getElementById('stats-bar').classList.toggle('hidden', !isTickets);
+
+      document.getElementById('nav-tickets').className =
+        `px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${isTickets ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`;
+      document.getElementById('nav-products').className =
+        `px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${!isTickets ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`;
+
+      if (!isTickets) fetchProducts();
+    }
+
+    function onRefresh() {
+      if (currentView === 'tickets') fetchTickets();
+      else fetchProducts();
+    }
+
+    /* ─── Tickets ─── */
     function buildCard(ticket) {
       const p = ticket.product || {};
       const salePrice = formatPrice(p.sale_price);
@@ -214,7 +285,6 @@
 
       return `
         <div class="card bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 ${ticket.content ? 'cursor-pointer' : 'cursor-default'}" ${ticket.content ? `onclick="openModal('${ticket.ticket_id}')"` : ''}>
-          <!-- Top row -->
           <div class="flex items-start justify-between gap-2">
             <span class="text-[10px] font-mono text-zinc-600">${ticket.ticket_id || '—'}</span>
             ${isCompleted
@@ -224,22 +294,14 @@
               : `<span class="tag bg-blue-500/15 text-blue-400">Pending</span>`
             }
           </div>
-
-          <!-- Product name -->
           <p class="text-sm font-semibold text-white leading-snug">${p.name || ticket.title || 'Không có tên'}</p>
-
-          <!-- Price row -->
           ${salePrice ? `
           <div class="flex items-center gap-2 flex-wrap">
             <span class="text-sm font-bold text-${accentColor}-400">${salePrice}</span>
             ${origPrice ? `<span class="text-xs text-zinc-500 line-through">${origPrice}</span>` : ''}
             ${discount ? `<span class="tag bg-red-500/15 text-red-400">${discount}</span>` : ''}
           </div>` : ''}
-
-          <!-- Category -->
           ${p.category ? `<span class="tag bg-zinc-800 text-zinc-400 w-fit">${p.category}</span>` : ''}
-
-          <!-- Features -->
           ${features.length > 0 ? `
           <ul class="flex flex-col gap-1">
             ${features.slice(0, 3).map(f => `
@@ -248,28 +310,19 @@
               </li>`).join('')}
             ${features.length > 3 ? `<li class="text-[10px] text-zinc-600">+${features.length - 3} điểm khác</li>` : ''}
           </ul>` : ''}
-
-          <!-- Link -->
           ${p.affiliate_link ? `
           <a href="${p.affiliate_link}" target="_blank"
              class="text-[10px] text-zinc-600 hover:text-zinc-400 truncate transition-colors"
-             title="${p.affiliate_link}">
+             title="${p.affiliate_link}" onclick="event.stopPropagation()">
             🔗 ${p.affiliate_link}
           </a>` : ''}
-
-          <!-- Content hint -->
           ${isCompleted && ticket.content ? `
           <div class="text-[10px] text-emerald-600 flex items-center gap-1">
             📄 <span class="underline underline-offset-2">Xem bài viết</span>
           </div>` : ''}
-
-          <!-- Footer -->
           <div class="flex items-center justify-between pt-1 border-t border-zinc-800">
             <span class="text-[10px] text-zinc-600">${formatDate(ticket.created_at)}</span>
-            ${ticket.completed_at
-              ? `<span class="text-[10px] text-emerald-700">${formatDate(ticket.completed_at)}</span>`
-              : ''
-            }
+            ${ticket.completed_at ? `<span class="text-[10px] text-emerald-700">${formatDate(ticket.completed_at)}</span>` : ''}
           </div>
         </div>
       `;
@@ -288,11 +341,9 @@
         document.getElementById('col-open').innerHTML = open.length
           ? open.map(buildCard).join('')
           : `<div class="text-center text-zinc-700 text-xs py-8">Không có ticket</div>`;
-
         document.getElementById('col-writing').innerHTML = writing.length
           ? writing.map(buildCard).join('')
           : `<div class="text-center text-zinc-700 text-xs py-8">Không có ticket</div>`;
-
         document.getElementById('col-done').innerHTML = done.length
           ? done.map(buildCard).join('')
           : `<div class="text-center text-zinc-700 text-xs py-8">Không có ticket</div>`;
@@ -308,14 +359,198 @@
         const now = new Date();
         document.getElementById('last-refresh').textContent =
           'Cập nhật ' + now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
       } catch (e) {
         console.error(e);
       }
     }
 
-    let ticketMap = {};
+    /* ─── Products ─── */
+    function buildProductCard(p) {
+      const salePrice = formatPrice(p.sale_price);
+      const origPrice = formatPrice(p.original_price);
+      const features = Array.isArray(p.key_features) ? p.key_features : [];
 
+      return `
+        <div class="card bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col">
+          <!-- Product image -->
+          <div class="w-full aspect-square bg-zinc-800 overflow-hidden relative">
+            ${p.image_url
+              ? `<img src="${p.image_url}" alt="${p.name || ''}" class="w-full h-full object-cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+                 <div class="absolute inset-0 hidden items-center justify-center text-zinc-600">
+                   <svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                 </div>`
+              : `<div class="w-full h-full flex items-center justify-center text-zinc-700">
+                   <svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                 </div>`
+            }
+            ${p.discount_pct ? `<span class="absolute top-2 right-2 tag bg-red-500 text-white">-${p.discount_pct}%</span>` : ''}
+          </div>
+
+          <!-- Info -->
+          <div class="flex flex-col gap-2 p-3 flex-1">
+            <p class="text-xs font-semibold text-white leading-snug line-clamp-2">${p.name || 'Không có tên'}</p>
+
+            ${salePrice ? `
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-sm font-bold text-emerald-400">${salePrice}</span>
+              ${origPrice ? `<span class="text-[10px] text-zinc-500 line-through">${origPrice}</span>` : ''}
+            </div>` : ''}
+
+            ${p.category ? `<span class="tag bg-zinc-800 text-zinc-500 w-fit">${p.category}</span>` : ''}
+
+            ${features.length > 0 ? `
+            <ul class="flex flex-col gap-0.5 mt-1">
+              ${features.slice(0, 2).map(f => `<li class="text-[10px] text-zinc-500 leading-snug">• ${f}</li>`).join('')}
+            </ul>` : ''}
+          </div>
+
+          <!-- Actions -->
+          <div class="px-3 pb-3 flex items-center gap-2">
+            <button onclick="createTicketFromProduct(${p.id})"
+              class="flex-1 text-[11px] font-semibold bg-orange-600 hover:bg-orange-500 text-white py-2 rounded-lg transition-colors">
+              ✍ Viết bài
+            </button>
+            <button onclick="deleteProduct(${p.id})"
+              class="text-[11px] text-zinc-600 hover:text-red-400 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-2 rounded-lg transition-colors"
+              title="Xóa sản phẩm">
+              ✕
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    let productMap = {};
+
+    async function fetchProducts() {
+      try {
+        const res = await fetch('/api/products');
+        const products = await res.json();
+        productMap = Object.fromEntries(products.map(p => [p.id, p]));
+
+        const grid = document.getElementById('product-grid');
+        const countEl = document.getElementById('product-count');
+
+        if (products.length === 0) {
+          grid.innerHTML = `<div class="col-span-full text-center text-zinc-700 text-sm py-16">Chưa có sản phẩm — paste link Shopee và nhấn Crawl</div>`;
+          countEl.classList.add('hidden');
+        } else {
+          grid.innerHTML = products.map(buildProductCard).join('');
+          countEl.textContent = `${products.length} sản phẩm đã crawl`;
+          countEl.classList.remove('hidden');
+        }
+
+        const now = new Date();
+        document.getElementById('last-refresh').textContent =
+          'Cập nhật ' + now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function doCrawl() {
+      const input = document.getElementById('crawl-input');
+      const link = input.value.trim();
+      if (!link) return;
+
+      const btn = document.getElementById('btn-crawl');
+      const icon = document.getElementById('crawl-icon');
+      const spinner = document.getElementById('crawl-spinner');
+      const msg = document.getElementById('crawl-msg');
+
+      btn.disabled = true;
+      icon.classList.add('hidden');
+      spinner.classList.remove('hidden');
+      msg.className = 'mt-2 text-xs text-zinc-500';
+      msg.textContent = 'Đang crawl sản phẩm... (có thể mất 30-60 giây)';
+      msg.classList.remove('hidden');
+
+      try {
+        const res = await fetch('/api/crawl', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+          body: JSON.stringify({ link })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.ok) {
+          msg.className = 'mt-2 text-xs text-emerald-400';
+          msg.textContent = `✓ Đã crawl: ${data.product?.name || 'Sản phẩm'} — ${formatPrice(data.product?.sale_price) || 'N/A'}`;
+          input.value = '';
+          await fetchProducts();
+        } else {
+          msg.className = 'mt-2 text-xs text-red-400';
+          msg.textContent = `✗ Lỗi: ${data.error || 'Không crawl được sản phẩm'}`;
+        }
+      } catch (e) {
+        msg.className = 'mt-2 text-xs text-red-400';
+        msg.textContent = `✗ Lỗi kết nối: ${e.message}`;
+      } finally {
+        btn.disabled = false;
+        icon.classList.remove('hidden');
+        spinner.classList.add('hidden');
+        setTimeout(() => { msg.classList.add('hidden'); }, 8000);
+      }
+    }
+
+    async function createTicketFromProduct(productId) {
+      const p = productMap[productId];
+      if (!p) return;
+
+      const btn = event.currentTarget;
+      btn.disabled = true;
+      btn.textContent = '...';
+
+      try {
+        const res = await fetch('/api/tickets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+          body: JSON.stringify({
+            title: p.name,
+            product: {
+              name: p.name,
+              sale_price: p.sale_price,
+              original_price: p.original_price,
+              discount_pct: p.discount_pct,
+              category: p.category,
+              image_url: p.image_url,
+              key_features: p.key_features,
+              affiliate_link: p.affiliate_link
+            }
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          btn.textContent = '✓ Đã tạo';
+          btn.className = 'flex-1 text-[11px] font-semibold bg-emerald-700 text-white py-2 rounded-lg';
+          setTimeout(() => switchView('tickets'), 800);
+        } else {
+          btn.textContent = '✗ Lỗi';
+          btn.disabled = false;
+          setTimeout(() => { btn.textContent = '✍ Viết bài'; btn.disabled = false; btn.className = 'flex-1 text-[11px] font-semibold bg-orange-600 hover:bg-orange-500 text-white py-2 rounded-lg transition-colors'; }, 2000);
+        }
+      } catch (e) {
+        btn.textContent = '✗ Lỗi';
+        btn.disabled = false;
+        setTimeout(() => { btn.textContent = '✍ Viết bài'; btn.className = 'flex-1 text-[11px] font-semibold bg-orange-600 hover:bg-orange-500 text-white py-2 rounded-lg transition-colors'; }, 2000);
+      }
+    }
+
+    async function deleteProduct(productId) {
+      if (!confirm('Xóa sản phẩm này?')) return;
+      try {
+        await fetch(`/api/products/${productId}`, {
+          method: 'DELETE',
+          headers: { 'X-API-Key': API_KEY }
+        });
+        await fetchProducts();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    /* ─── Modal ─── */
+    let ticketMap = {};
     let currentTicketId = null;
 
     function switchTab(tab) {
@@ -347,7 +582,6 @@
         linkRow.classList.add('hidden');
       }
 
-      // Reset image tab
       document.getElementById('img-url-input').value = t.product?.image_url || '';
       loadImagePreview(id);
 
@@ -362,7 +596,6 @@
       const loading = document.getElementById('img-loading');
       const btnDownload = document.getElementById('btn-download');
 
-      // Try loading from server
       const imgUrl = `/api/tickets/${encodeURIComponent(id)}/image?t=${Date.now()}`;
       const testImg = new Image();
       testImg.onload = () => {
@@ -397,7 +630,7 @@
       try {
         await fetch(`/api/tickets/${encodeURIComponent(currentTicketId)}/generate-image`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'dangbadao' },
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
           body: JSON.stringify(imageUrl ? { image_url: imageUrl } : {})
         });
         loadImagePreview(currentTicketId);
@@ -429,8 +662,11 @@
       });
     }
 
+    /* ─── Init ─── */
     fetchTickets();
-    setInterval(fetchTickets, 5000);
+    setInterval(() => {
+      if (currentView === 'tickets') fetchTickets();
+    }, 5000);
   </script>
 </body>
 </html>
