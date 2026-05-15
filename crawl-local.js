@@ -11,19 +11,33 @@
 const { chromium } = require('playwright');
 const https = require('https');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 const RENDER_URL = process.env.PM_URL || 'https://pm-kanban.onrender.com';
 const API_KEY    = process.env.API_KEY || 'dangbadao';
+
+function loadCookies() {
+  const cookiePath = path.join(__dirname, 'shopee-cookies.json');
+  if (!fs.existsSync(cookiePath)) return [];
+  try { return JSON.parse(fs.readFileSync(cookiePath, 'utf-8')); }
+  catch { return []; }
+}
 
 async function crawlShopee(affiliateLink) {
   console.log('🔍 Mở Shopee...');
   const browser = await chromium.launch({ headless: true });
   try {
+    const cookies = loadCookies();
     const ctx = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/20G75 Safari/604.1',
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       locale: 'vi-VN',
-      extraHTTPHeaders: { 'Accept-Language': 'vi-VN,vi;q=0.9' },
+      extraHTTPHeaders: { 'Accept-Language': 'vi-VN,vi;q=0.9,en;q=0.8' },
     });
+    if (cookies.length) {
+      await ctx.addCookies(cookies);
+      console.log(`🍪 Loaded ${cookies.length} cookies`);
+    }
     const page = await ctx.newPage();
 
     await page.goto(affiliateLink, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -33,8 +47,11 @@ async function crawlShopee(affiliateLink) {
     let shopid, itemid;
     const m1 = finalUrl.match(/shopee\.vn\/product\/(\d+)\/(\d+)/);
     const m2 = finalUrl.match(/-i\.(\d+)\.(\d+)/);
+    // /seller-name/{shopid}/{itemid} format
+    const m3 = finalUrl.match(/shopee\.vn\/[^/]+\/(\d{6,})\/(\d{6,})/);
     if (m1) { shopid = m1[1]; itemid = m1[2]; }
     else if (m2) { shopid = m2[1]; itemid = m2[2]; }
+    else if (m3) { shopid = m3[1]; itemid = m3[2]; }
 
     // Try Shopee internal API using the page's own session cookies
     let apiData = null;
@@ -66,20 +83,44 @@ async function crawlShopee(affiliateLink) {
       shopInfo    = { name: apiData.shop_name, rating: apiData.item_rating?.rating_star };
     } else {
       console.log('⚠️  API không trả data, fallback DOM...');
-      await page.waitForTimeout(5000);
+      // Wait for React to render price elements
+      await page.waitForTimeout(6000);
       const extracted = await page.evaluate(() => {
         const metaTitle = document.querySelector('meta[property="og:title"]')?.content || document.title || '';
         const metaImg   = document.querySelector('meta[property="og:image"]')?.content || '';
-        const priceEls  = [...document.querySelectorAll('[class*="pqTWkA"],[class*="price"],[class*="Price"]')]
-          .map(el => el.textContent.replace(/[^\d]/g, '')).filter(p => p.length >= 4 && p.length <= 9);
-        return { title: metaTitle, img: metaImg, prices: priceEls };
+
+        // Try window state objects Shopee exposes
+        let statePrice = 0, stateOrigPrice = 0, stateDiscount = 0;
+        try {
+          const state = window.__INITIAL_STATE__ || window.__REDUX_STATE__ || {};
+          const item  = state?.itemDetail?.item || state?.item || {};
+          if (item.price) statePrice = Math.round(item.price / 100000);
+          if (item.price_before_discount) stateOrigPrice = Math.round(item.price_before_discount / 100000);
+          if (item.raw_discount) stateDiscount = item.raw_discount;
+        } catch {}
+
+        // Fallback: scrape all price-looking text from DOM (VN format: 390.000₫ or 390,000₫)
+        const allText = document.body.innerText;
+        const priceMatches = [...allText.matchAll(/(\d{1,3}(?:[.,]\d{3})+)(?:\s*[₫đ]|\s*VND)/g)]
+          .map(m => parseInt(m[1].replace(/[.,]/g, ''), 10))
+          .filter(p => p >= 1000 && p <= 100000000);
+
+        return { title: metaTitle, img: metaImg, statePrice, stateOrigPrice, stateDiscount, priceMatches };
       });
-      name        = extracted.title.replace(/\s*[-|].*shopee.*/i, '').trim() || 'Sản phẩm Shopee';
-      imageUrl    = extracted.img || null;
-      const prices = extracted.prices.map(Number).filter(p => p > 1000).sort((a, b) => a - b);
-      salePrice   = prices[0] || 0;
-      origPrice   = prices[prices.length - 1] || salePrice;
-      discountPct = origPrice > salePrice ? Math.round((1 - salePrice / origPrice) * 100) : 0;
+
+      name = extracted.title.replace(/\s*[-|].*shopee.*/i, '').trim() || 'Sản phẩm Shopee';
+      imageUrl = extracted.img || null;
+
+      if (extracted.statePrice > 0) {
+        salePrice   = extracted.statePrice;
+        origPrice   = extracted.stateOrigPrice || salePrice;
+        discountPct = extracted.stateDiscount || (origPrice > salePrice ? Math.round((1 - salePrice / origPrice) * 100) : 0);
+      } else {
+        const prices = [...new Set(extracted.priceMatches)].sort((a, b) => a - b);
+        salePrice   = prices[0] || 0;
+        origPrice   = prices[prices.length - 1] || salePrice;
+        discountPct = origPrice > salePrice ? Math.round((1 - salePrice / origPrice) * 100) : 0;
+      }
       keyFeatures = [];
       category    = '';
       shopInfo    = {};
@@ -121,20 +162,52 @@ function post(url, data, apiKey) {
   });
 }
 
+function prompt(question) {
+  return new Promise(resolve => {
+    process.stdout.write(question);
+    process.stdin.resume();
+    process.stdin.setEncoding('utf-8');
+    process.stdin.once('data', d => { process.stdin.pause(); resolve(d.trim()); });
+  });
+}
+
 async function main() {
-  const link = process.argv[2];
+  const args = process.argv.slice(2);
+  const link = args.find(a => a.startsWith('http'));
   if (!link) {
-    console.error('Usage: node crawl-local.js "https://s.shopee.vn/..."');
+    console.error('Usage: node crawl-local.js "https://s.shopee.vn/..." [--price=390000] [--orig=450000]');
     process.exit(1);
   }
 
+  // CLI price override
+  const priceArg  = args.find(a => a.startsWith('--price='));
+  const origArg   = args.find(a => a.startsWith('--orig='));
+  const cliPrice  = priceArg  ? parseInt(priceArg.split('=')[1])  : null;
+  const cliOrig   = origArg   ? parseInt(origArg.split('=')[1])   : null;
+
   const data = await crawlShopee(link);
 
-  console.log('\n📦 Kết quả:');
-  console.log('  Tên   :', data.name);
-  console.log('  Giá   :', data.sale_price, 'đ  (gốc', data.original_price, 'đ,', data.discount_pct + '% off)');
-  console.log('  Ảnh   :', data.image_url ? '✓' : '✗');
-  console.log('  Cat   :', data.category || '—');
+  console.log('\n📦 Kết quả crawl:');
+  console.log('  Tên  :', data.name);
+  console.log('  Ảnh  :', data.image_url ? '✓' : '✗');
+
+  // Price handling
+  if (cliPrice) {
+    data.sale_price     = cliPrice;
+    data.original_price = cliOrig || cliPrice;
+    data.discount_pct   = cliOrig && cliOrig > cliPrice ? Math.round((1 - cliPrice/cliOrig)*100) : 0;
+  } else if (!data.sale_price) {
+    console.log('\n  ⚠️  Không lấy được giá tự động (Shopee chặn).');
+    const saleInput = await prompt('  Nhập giá sale (ví dụ 390000, hoặc Enter bỏ qua): ');
+    const origInput = await prompt('  Nhập giá gốc (Enter = giống giá sale): ');
+    data.sale_price     = saleInput ? parseInt(saleInput) : 0;
+    data.original_price = origInput ? parseInt(origInput) : data.sale_price;
+    data.discount_pct   = data.original_price > data.sale_price
+      ? Math.round((1 - data.sale_price / data.original_price) * 100) : 0;
+  }
+
+  console.log('  Giá  :', data.sale_price?.toLocaleString('vi-VN') + 'đ',
+    data.discount_pct ? `(-${data.discount_pct}%)` : '');
 
   console.log('\n📡 Lưu lên server...');
   const result = await post(`${RENDER_URL}/api/products/import`, { affiliate_link: link, ...data }, API_KEY);
