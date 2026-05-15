@@ -55,8 +55,17 @@ async function crawlShopee(affiliateLink) {
   let browser;
   try {
     const { chromium } = require('playwright');
+    const { existsSync } = require('fs');
+    const systemChromium = [
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/google-chrome',
+    ].find(p => existsSync(p));
+
     browser = await chromium.launch({
       headless: true,
+      executablePath: systemChromium || undefined,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process'],
     });
     const ctx = await browser.newContext({
