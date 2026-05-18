@@ -202,8 +202,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // PATCH /api/tickets/:id
+  // GET /api/tickets/:id
   const patchMatch = url.pathname.match(/^\/api\/tickets\/([^/]+)$/);
+  if (patchMatch && req.method === 'GET') {
+    try {
+      const id = decodeURIComponent(patchMatch[1]);
+      const { rows } = await pool.query('SELECT * FROM tickets WHERE ticket_id = $1', [id]);
+      if (!rows.length) { json(res, 404, { error: 'Not found' }); return; }
+      json(res, 200, rows[0]);
+    } catch (e) { json(res, 500, { error: e.message }); }
+    return;
+  }
+
+  // PATCH /api/tickets/:id
   if (patchMatch && req.method === 'PATCH') {
     if (!authOk(req)) { json(res, 401, { error: 'Unauthorized' }); return; }
     try {
