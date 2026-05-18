@@ -282,12 +282,17 @@
         <div class="card bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 ${ticket.content ? 'cursor-pointer' : 'cursor-default'}" ${ticket.content ? `onclick="openModal('${ticket.ticket_id}')"` : ''}>
           <div class="flex items-start justify-between gap-2">
             <span class="text-[10px] font-mono text-zinc-600">${ticket.ticket_id || '—'}</span>
-            ${isCompleted
-              ? `<span class="tag bg-emerald-500/15 text-emerald-400">✓ Done</span>`
-              : isWriting
-              ? `<span class="tag bg-amber-500/15 text-amber-400">✍ Writing</span>`
-              : `<span class="tag bg-blue-500/15 text-blue-400">Pending</span>`
-            }
+            <div class="flex items-center gap-1.5">
+              ${isCompleted
+                ? `<span class="tag bg-emerald-500/15 text-emerald-400">✓ Done</span>`
+                : isWriting
+                ? `<span class="tag bg-amber-500/15 text-amber-400">✍ Writing</span>`
+                : `<span class="tag bg-blue-500/15 text-blue-400">Pending</span>`
+              }
+              <button onclick="event.stopPropagation();deleteTicket('${ticket.ticket_id}')"
+                class="text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded p-0.5 transition-colors leading-none text-[13px]"
+                title="Xóa task">✕</button>
+            </div>
           </div>
           <p class="text-sm font-semibold text-white leading-snug">${p.name || ticket.title || 'Không có tên'}</p>
           ${salePrice ? `
@@ -483,6 +488,19 @@
         btn.textContent = '✗ Lỗi';
         btn.disabled = false;
         setTimeout(() => { btn.textContent = '✍ Viết bài'; btn.className = 'flex-1 text-[11px] font-semibold bg-orange-600 hover:bg-orange-500 text-white py-2 rounded-lg transition-colors'; }, 2000);
+      }
+    }
+
+    async function deleteTicket(ticketId) {
+      if (!confirm(`Xóa task ${ticketId}?`)) return;
+      try {
+        await fetch(`/api/tickets/${encodeURIComponent(ticketId)}`, {
+          method: 'DELETE',
+          headers: { 'X-API-Key': API_KEY }
+        });
+        await fetchTickets();
+      } catch (e) {
+        console.error(e);
       }
     }
 

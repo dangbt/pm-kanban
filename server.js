@@ -219,6 +219,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // DELETE /api/tickets/:id
+  if (patchMatch && req.method === 'DELETE') {
+    if (!authOk(req)) { json(res, 401, { error: 'Unauthorized' }); return; }
+    try {
+      const id = decodeURIComponent(patchMatch[1]);
+      await pool.query('DELETE FROM tickets WHERE ticket_id = $1', [id]);
+      json(res, 200, { ok: true });
+    } catch (e) { json(res, 400, { error: e.message }); }
+    return;
+  }
+
   // POST /api/tickets/:id/generate-image
   const genImg = url.pathname.match(/^\/api\/tickets\/(.+)\/generate-image$/);
   if (genImg && req.method === 'POST') {
